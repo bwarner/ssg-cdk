@@ -1,0 +1,31 @@
+# Ignore JavaScript files except jest.config.js
+*.js
+!jest.config.js
+
+# Ignore TypeScript declaration files
+*.d.ts
+
+# Ignore Node.js dependencies
+node_modules/
+
+# Ignore CDK-specific directories
+.cdk.staging/
+cdk.out/
+
+# Ignore environment variable files
+.env
+.env.*
+
+# Ignore build artifacts
+dist/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Logs
+*.log
