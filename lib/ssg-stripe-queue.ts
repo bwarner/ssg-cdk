@@ -23,6 +23,7 @@ interface StripeQueueProps extends cdk.StackProps {
 export class SsgStripeQueueStack extends cdk.Stack {
   queue: sqs.Queue;
   topic: sns.Topic;
+  queueForDev: sqs.Queue;
 
   constructor(scope: Construct, id: string, props?: StripeQueueProps) {
     super(scope, id, props);
@@ -37,22 +38,43 @@ export class SsgStripeQueueStack extends cdk.Stack {
   }
 
   createSQSQueue(name: string, topic: sns.Topic) {
-    const deadLetterQueue = new sqs.Queue(this, `${name}DeadLetterQueue`, {
-      queueName: `${name}DeadLetterQueue`,
+    const queueDLQ = new sqs.Queue(this, `${name}QueueDLQ`, {
+      queueName: `DLQ-For-${name}-Queue`,
       retentionPeriod: cdk.Duration.days(7),
     });
 
+    const topicDLQ = new sqs.Queue(this, `${name}TopicDLQ`, {
+      queueName: `DLQ-For-${name}-Topic`,
+      retentionPeriod: cdk.Duration.days(7),
+    });
+
+    this.queueForDev = new sqs.Queue(this, `${name}-For-Dev`, {
+      queueName: `${name}-For-Dev`,
+      retentionPeriod: cdk.Duration.days(1),
+      visibilityTimeout: cdk.Duration.seconds(30),
+    });
+
+    const subscriptionForDev = new sns_subscriptions.SqsSubscription(
+      this.queueForDev,
+      {
+        rawMessageDelivery: false,
+      }
+    );
+    topic.addSubscription(subscriptionForDev);
+
     this.queue = new sqs.Queue(this, name, {
       queueName: name,
+      retentionPeriod: cdk.Duration.days(1),
       visibilityTimeout: cdk.Duration.seconds(30),
       deadLetterQueue: {
         maxReceiveCount: 5,
-        queue: deadLetterQueue,
+        queue: queueDLQ,
       },
     });
 
     const subscription = new sns_subscriptions.SqsSubscription(this.queue, {
-      rawMessageDelivery: true,
+      deadLetterQueue: topicDLQ,
+      rawMessageDelivery: false,
     });
     topic.addSubscription(subscription);
 

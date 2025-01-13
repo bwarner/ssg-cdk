@@ -81,6 +81,7 @@ export class SsgStack extends cdk.Stack {
       lambdaName: "Relay",
       repositoryVersion: relayLambdaVersion,
       stripeDestinationUrl: parameters.stripeDestinationUrl,
+      stripeQueue: stripeQueue.queue,
     });
 
     const lambdaGateway = new SsgLambdaGateway(this, "SsgLambdaGateway", {
@@ -149,7 +150,6 @@ export class SsgStack extends cdk.Stack {
     relayLambda.addDependency(parameters);
     relayLambda.addDependency(ecr);
     relayLambda.addDependency(secrets);
-    relayLambda.addDependency(stripeTopic);
     relayLambda.addDependency(stripeQueue);
     parameters.addDependency(stripeTopic);
     parameters.addDependency(secrets);

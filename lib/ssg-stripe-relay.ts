@@ -7,12 +7,20 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as ssm from "aws-cdk-lib/aws-ssm";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 interface SsgRelayLambdaProps extends cdk.StackProps {
   repository: ecr.Repository;
   lambdaName: string;
   repositoryVersion: string;
   stripeDestinationUrl: ssm.StringParameter;
+  stripeQueue: sqs.Queue;
 }
+
+const DLQ_RETENTION_DAYS = 7;
+const LOG_RETENTION_DAYS = logs.RetentionDays.ONE_WEEK;
+const MAX_CONCURRENCY = 2;
+const BATCH_SIZE = 1;
+const MAX_BATCHING_WINDOW = cdk.Duration.seconds(10);
 
 export class SsgRelayLambdaStack extends cdk.Stack {
   lambdaFunction: lambda.DockerImageFunction;
@@ -28,10 +36,9 @@ export class SsgRelayLambdaStack extends cdk.Stack {
     if (!props?.repositoryVersion) {
       throw new Error("stripeHookVersion is required");
     }
-    // if (!props?.stripeDestinationUrl) {
-    //   throw new Error('stripeDestinationUrl is required');
-    // }
-
+    if (!props?.stripeQueue) {
+      throw new Error("stripeQueue is required");
+    }
     // this.stripeDestinationUrl = props.stripeDestinationUrl;
     const { lambdaFunction, lambdaAlias, deadLetterQueue } =
       this.createLambdaFunction(props);
@@ -39,7 +46,35 @@ export class SsgRelayLambdaStack extends cdk.Stack {
     this.lambdaAlias = lambdaAlias;
     this.lambdaFunction = lambdaFunction;
 
-    createMetrics(this, this.lambdaFunction, this.deadLetterQueue);
+    // lambdaFunction.addPermission("AllowStripeQueueToInvokeLambda", {
+    //   action: "lambda:InvokeFunction",
+    //   principal: new iam.ServicePrincipal("sqs.amazonaws.com"),
+    //   sourceArn: props.stripeQueue.queueArn,
+    // });
+
+    lambdaAlias.addPermission("AllowStripeQueueToInvokeLambdaAlias", {
+      action: "lambda:InvokeFunction",
+      principal: new iam.ServicePrincipal("sqs.amazonaws.com"),
+      sourceArn: props.stripeQueue.queueArn,
+    });
+
+    props.stripeQueue.grantConsumeMessages(lambdaFunction);
+
+    lambdaAlias.addEventSource(
+      new SqsEventSource(props.stripeQueue, {
+        batchSize: BATCH_SIZE,
+        maxConcurrency: MAX_CONCURRENCY,
+        maxBatchingWindow: MAX_BATCHING_WINDOW,
+        reportBatchItemFailures: true,
+      })
+    );
+
+    createMetrics(
+      this,
+      this.lambdaFunction,
+      this.deadLetterQueue,
+      props.lambdaName
+    );
   }
 
   createLambdaFunction({
@@ -56,7 +91,7 @@ export class SsgRelayLambdaStack extends cdk.Stack {
       `${lambdaName}LambdaDeadLetterQueue`,
       {
         queueName: `${lambdaName}LambdaDeadLetterQueue`,
-        retentionPeriod: cdk.Duration.days(7),
+        retentionPeriod: cdk.Duration.days(DLQ_RETENTION_DAYS),
       }
     );
     // Create an IAM role for the Lambda function
@@ -90,7 +125,7 @@ export class SsgRelayLambdaStack extends cdk.Stack {
 
     const logGroup = new logs.LogGroup(this, `${lambdaName}LogGroup`, {
       logGroupName: `/aws/lambda/${lambdaName}`,
-      retention: logs.RetentionDays.ONE_WEEK, // Adjust as needed
+      retention: LOG_RETENTION_DAYS, // Adjust as needed
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -159,7 +194,8 @@ export class SsgRelayLambdaStack extends cdk.Stack {
 function createMetrics(
   stack: cdk.Stack,
   lambdaFunction: lambda.IFunction,
-  deadLetterQueue: sqs.IQueue
+  deadLetterQueue: sqs.IQueue,
+  lambdaName: string
 ) {
   const metricsConfig = [
     {
@@ -199,7 +235,9 @@ function createMetrics(
   return metricsConfig.map(({ metric, alarmProps }, index) => {
     let alarm: cloudwatch.Alarm | undefined;
     if (alarmProps) {
-      alarm = new cloudwatch.Alarm(stack, `Alarm-${index}`, {
+      const alarmName = `${lambdaName}-${metric.metricName}`;
+      console.log("alarmName", alarmName);
+      alarm = new cloudwatch.Alarm(stack, alarmName, {
         metric,
         threshold: alarmProps.threshold,
         evaluationPeriods: alarmProps.evaluationPeriods,
