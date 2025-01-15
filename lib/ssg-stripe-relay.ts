@@ -236,7 +236,6 @@ function createMetrics(
     let alarm: cloudwatch.Alarm | undefined;
     if (alarmProps) {
       const alarmName = `${lambdaName}-${metric.metricName}`;
-      console.log("alarmName", alarmName);
       alarm = new cloudwatch.Alarm(stack, alarmName, {
         metric,
         threshold: alarmProps.threshold,
