@@ -1,6 +1,6 @@
-import * as cdk from 'aws-cdk-lib';
-import { Construct } from 'constructs';
-import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as cdk from "aws-cdk-lib";
+import { Construct } from "constructs";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 
 export class SsgEcrStack extends cdk.Stack {
   nmapRepository: ecr.Repository;
@@ -8,65 +8,77 @@ export class SsgEcrStack extends cdk.Stack {
   batchRepository: ecr.Repository;
   stripeHookRepository: ecr.Repository;
   relayRepository: ecr.Repository;
-
+  eventBridgeConsumerRepository: ecr.Repository;
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
     // Define your ECR repository
-    this.nmapRepository = new ecr.Repository(this, 'SsgRepository', {
-      repositoryName: 'nmap',
+    this.nmapRepository = new ecr.Repository(this, "SsgRepository", {
+      repositoryName: "nmap",
     });
 
     // Export the repository ARN as a CloudFormation output
-    new cdk.CfnOutput(this, 'SsgEcrArn', {
+    new cdk.CfnOutput(this, "SsgEcrArn", {
       value: this.nmapRepository.repositoryArn,
-      exportName: 'ssg-repo-nmap-arn',
+      exportName: "ssg-repo-nmap-arn",
     });
 
     // Define your ECR repository
     this.frontendRepository = new ecr.Repository(
       this,
-      'SsgFrontEndRepository',
+      "SsgFrontEndRepository",
       {
-        repositoryName: 'frontend',
-      },
+        repositoryName: "frontend",
+      }
     );
 
-    // Export the repository ARN as a CloudFormation output
-    new cdk.CfnOutput(this, 'SsgFrontendArn', {
+    new cdk.CfnOutput(this, "SsgFrontendArn", {
       value: this.frontendRepository.repositoryArn,
-      exportName: 'ssg-repo-frontend-arn',
+      exportName: "ssg-repo-frontend-arn",
+    });
+
+    this.eventBridgeConsumerRepository = new ecr.Repository(
+      this,
+      "SsgEventBridgeConsumerRepository",
+      {
+        repositoryName: "ssg-eb-rules",
+      }
+    );
+
+    new cdk.CfnOutput(this, "SsgEventBridgeConsumerRepositoryArn", {
+      value: this.eventBridgeConsumerRepository.repositoryArn,
+      exportName: "ssg-repo-eb-rules-arn",
     });
 
     this.stripeHookRepository = new ecr.Repository(
       this,
-      'StripeHookRepository',
+      "StripeHookRepository",
       {
-        repositoryName: 'stripe-hook',
-      },
+        repositoryName: "stripe-hook",
+      }
     );
-    new cdk.CfnOutput(this, 'SsgStripeHookRepositoryArn', {
+    new cdk.CfnOutput(this, "SsgStripeHookRepositoryArn", {
       value: this.stripeHookRepository.repositoryArn,
-      exportName: 'ssg-repo-stripe-hook-arn',
+      exportName: "ssg-repo-stripe-hook-arn",
     });
 
-    this.batchRepository = new ecr.Repository(this, 'SsgBatchRepository', {
-      repositoryName: 'ssg-batch',
+    this.batchRepository = new ecr.Repository(this, "SsgBatchRepository", {
+      repositoryName: "ssg-batch",
     });
 
     // Export the repository ARN as a CloudFormation output
-    new cdk.CfnOutput(this, 'SsgBatchEcrArn', {
+    new cdk.CfnOutput(this, "SsgBatchEcrArn", {
       value: this.batchRepository.repositoryArn,
-      exportName: 'ssg-repo-batch-arn',
+      exportName: "ssg-repo-batch-arn",
     });
 
-    this.relayRepository = new ecr.Repository(this, 'SsgRelayRepository', {
-      repositoryName: 'relay',
+    this.relayRepository = new ecr.Repository(this, "SsgRelayRepository", {
+      repositoryName: "relay",
     });
 
-    new cdk.CfnOutput(this, 'SsgRelayEcrArn', {
+    new cdk.CfnOutput(this, "SsgRelayEcrArn", {
       value: this.relayRepository.repositoryArn,
-      exportName: 'ssg-repo-relay-arn',
+      exportName: "ssg-repo-relay-arn",
     });
   }
 }

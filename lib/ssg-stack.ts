@@ -8,12 +8,11 @@ import { SsgBatchStack } from "./ssg-batch";
 import { SsgSecretsStack } from "./ssg-secrets";
 import { SsgGithubStack } from "./ssg-github";
 import { CloudWatchSchedulerStack } from "./ssg-cloudwatch-scheduler";
-import { SsgStripeTopicStack } from "./ssg-stripe-topic";
-import { SsgStripeHookStack } from "./ssg-stripe-hook-lambda";
-import { SsgLambdaGateway } from "./ssg-lambda-gateway";
-import { SsgStripeQueueStack } from "./ssg-stripe-queue";
 import { ParametersStack } from "./ssg-parameters";
-import { SsgRelayLambdaStack } from "./ssg-stripe-relay";
+import { SsgRelayLambdaStack } from "./ssg-relay-lambda";
+import { SsgStripeStack } from "./ssg-stripe";
+import { SsgEbRulesStack } from "./ssg-eb-rules";
+import { SsgEbRulesLambdaStack } from "./ssg-eb-rules-lambda";
 export class SsgStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -39,6 +38,12 @@ export class SsgStack extends cdk.Stack {
     if (!stripeHookLambdaVersion) {
       throw new Error("Missing required environment variables");
     }
+    const ebRulesLambdaVersion = process.env.EB_RULES_LAMBDA_VERSION;
+    if (!ebRulesLambdaVersion) {
+      throw new Error(
+        "Missing required environment variables EB_RULES_LAMBDA_VERSION"
+      );
+    }
 
     // Create VPC
     const vpc = new SsgVpcStack(this, "SsgVpc");
@@ -54,41 +59,15 @@ export class SsgStack extends cdk.Stack {
 
     const secrets = new SsgSecretsStack(this, "SsgSecretsStack");
 
-    const stripeTopic = new SsgStripeTopicStack(this, "SsgStripeTopicStack", {
-      topicName: "StripeTopic",
-    });
+    const parameters = new ParametersStack(this, "SsgParametersStack");
 
-    const stripeQueue = new SsgStripeQueueStack(this, "SsgStripeQueueStack", {
-      queueName: "StripeQueue",
-      sourceTopic: stripeTopic.topic,
-    });
-
-    const parameters = new ParametersStack(this, "SsgParametersStack", {
-      stripeTopicArn: stripeTopic.topic.topicArn,
-    });
-
-    const stripeHook = new SsgStripeHookStack(this, "SsgStripeLambdaStack", {
-      repository: ecr.stripeHookRepository,
-      topic: stripeTopic.topic,
-      lambdaName: "StripeHook",
-      repositoryVersion: stripeHookLambdaVersion,
-      ssgSecret: secrets.ssgSecret,
-      stripeTopicArnParam: parameters.stripeTopicArnParam,
-    });
-
-    const relayLambda = new SsgRelayLambdaStack(this, "SsgRelayLambdaStack", {
-      repository: ecr.relayRepository,
-      lambdaName: "Relay",
-      repositoryVersion: relayLambdaVersion,
-      stripeDestinationUrl: parameters.stripeDestinationUrl,
-      stripeQueue: stripeQueue.queue,
-    });
-
-    const lambdaGateway = new SsgLambdaGateway(this, "SsgLambdaGateway", {
-      lambda: stripeHook.lambdaFunction,
-      lambdaAlias: stripeHook.lambdaAlias,
-      relayLambda: relayLambda.lambdaFunction,
-      relayLambdaAlias: relayLambda.lambdaAlias,
+    const stripe = new SsgStripeStack(this, "SsgStripeStack", {
+      stripeHookRepository: ecr.stripeHookRepository,
+      relayRepository: ecr.relayRepository,
+      stripeHookLambdaVersion,
+      relayLambdaVersion,
+      secrets,
+      parameters,
     });
 
     // Create ECS stack with VPC dependency
@@ -118,6 +97,17 @@ export class SsgStack extends cdk.Stack {
       envName: process.env.ENVIRONMENT || "dev",
     });
 
+    const schedulerRelayLambda = new SsgRelayLambdaStack(
+      this,
+      "SchedulerRelayLambdaStack",
+      {
+        repository: ecr.relayRepository,
+        lambdaName: "SchedulerRelay",
+        repositoryVersion: relayLambdaVersion,
+        destinationUrl: parameters.schedulerDestinationUrl,
+      }
+    );
+
     const cloudWatchScheduler = new CloudWatchSchedulerStack(
       this,
       "CloudWatchSchedulerStack",
@@ -125,8 +115,30 @@ export class SsgStack extends cdk.Stack {
         repo: ecr.batchRepository,
         lowPriorityQueue: batch.queues.lowPriorityQueue,
         highPriorityQueue: batch.queues.highPriorityQueue,
+        relayLambda: schedulerRelayLambda.lambdaFunction,
+        relayLambdaAlias: schedulerRelayLambda.lambdaAlias,
       }
     );
+
+    const ebRulesLambda = new SsgEbRulesLambdaStack(
+      this,
+      "SsgEbRulesLambdaStack",
+      {
+        repository: ecr.eventBridgeConsumerRepository,
+        lambdaName: "EventBridgeRulesHandler",
+        repositoryVersion: ebRulesLambdaVersion,
+      }
+    );
+    ebRulesLambda.addDependency(ecr);
+
+    const ebRules = new SsgEbRulesStack(this, "SsgEbRulesStack", {
+      relayLambdaAlias: schedulerRelayLambda.lambdaAlias,
+      lambdaFunction: ebRulesLambda.lambdaFunction,
+      topic: ebRulesLambda.ebRuleTopic,
+    });
+
+    ebRules.addDependency(ebRulesLambda);
+
     new SsgGithubStack(this, "SsgGithubStack");
 
     this.addDependency(vpc);
@@ -134,24 +146,13 @@ export class SsgStack extends cdk.Stack {
     this.addDependency(zone);
     this.addDependency(batch);
     this.addDependency(ecs);
-    this.addDependency(lambdaGateway);
+    this.addDependency(stripe);
     this.addDependency(cloudWatchScheduler);
     ecs.addDependency(vpc);
     ecs.addDependency(ecr);
     ecs.addDependency(zone);
     batch.addDependency(vpc);
     batch.addDependency(ecr);
-    stripeHook.addDependency(ecr);
-    stripeHook.addDependency(stripeTopic);
-    stripeQueue.addDependency(stripeTopic);
-    stripeHook.addDependency(parameters);
-    lambdaGateway.addDependency(stripeHook);
-    lambdaGateway.addDependency(relayLambda);
-    relayLambda.addDependency(parameters);
-    relayLambda.addDependency(ecr);
-    relayLambda.addDependency(secrets);
-    relayLambda.addDependency(stripeQueue);
-    parameters.addDependency(stripeTopic);
     parameters.addDependency(secrets);
     cloudWatchScheduler.addDependency(ecr);
     cloudWatchScheduler.addDependency(batch);

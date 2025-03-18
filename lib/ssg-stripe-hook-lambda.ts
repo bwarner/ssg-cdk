@@ -113,14 +113,12 @@ export class SsgStripeHookStack extends cdk.Stack {
     repositoryVersion,
     repository,
     ssgSecret,
-    stripeTopicArnParam,
   }: {
     lambdaName: string;
     topic: sns.Topic;
     repositoryVersion: string;
     repository: ecr.Repository;
     ssgSecret: secretsmanager.Secret;
-    stripeTopicArnParam: ssm.StringParameter;
   }) {
     const deadLetterQueue = new sqs.Queue(
       this,
@@ -154,7 +152,7 @@ export class SsgStripeHookStack extends cdk.Stack {
         sid: `Allow${lambdaName}ToAccessParameters`,
         effect: iam.Effect.ALLOW,
         actions: ["ssm:GetParameter"],
-        resources: [stripeTopicArnParam.parameterArn],
+        resources: [topic.topicArn],
       })
     );
     executionRole.addToPolicy(
@@ -188,11 +186,9 @@ export class SsgStripeHookStack extends cdk.Stack {
       role: executionRole,
       description: `${lambdaName} Lambda Function`,
       deadLetterQueue: deadLetterQueue,
-      environment: topic
-        ? {
-            TOPIC_ARN: topic.topicArn,
-          }
-        : {},
+      environment: {
+        TOPIC_ARN: topic.topicArn,
+      },
       logRetention: logs.RetentionDays.ONE_WEEK, // Ensures logs are retained for a week
     });
 
