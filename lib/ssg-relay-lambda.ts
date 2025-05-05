@@ -11,15 +11,14 @@ interface SsgRelayLambdaProps extends cdk.StackProps {
   repository: ecr.Repository;
   lambdaName: string;
   repositoryVersion: string;
-  destinationUrl: ssm.StringParameter;
+  policies?: iam.PolicyStatement[];
+  environment?: Record<string, string>;
 }
 
 export class SsgRelayLambdaStack extends cdk.Stack {
   lambdaFunction: lambda.DockerImageFunction;
   lambdaAlias: lambda.Alias;
   deadLetterQueue: sqs.IQueue;
-  destinationUrl: ssm.StringParameter;
-
   constructor(scope: Construct, id: string, props?: SsgRelayLambdaProps) {
     super(scope, id, props);
 
@@ -36,6 +35,8 @@ export class SsgRelayLambdaStack extends cdk.Stack {
       lambdaName: props.lambdaName,
       repositoryVersion: props.repositoryVersion,
       repository: props.repository,
+      policies: props.policies,
+      environment: props.environment,
     });
 
     const lambdaAlias = new lambda.Alias(this, `${props.lambdaName}Alias`, {

@@ -16,7 +16,7 @@ import { BATCH_SIZE } from "./const";
 import { MAX_BATCHING_WINDOW } from "./const";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { MAX_CONCURRENCY } from "./const";
-
+import Settings from "./settings";
 interface SsgStripeStackProps extends cdk.StackProps {
   stripeHookRepository: ecr.Repository;
   relayRepository: ecr.Repository;
@@ -33,6 +33,7 @@ export class SsgStripeStack extends cdk.Stack {
       throw new Error("props is required");
     }
 
+    const settings = new Settings(this);
     const parameters = props.parameters;
     const stripeTopic = new SsgStripeTopicStack(this, "SsgStripeTopicStack", {
       topicName: "StripeTopic",
@@ -56,7 +57,9 @@ export class SsgStripeStack extends cdk.Stack {
       repository: props.relayRepository,
       lambdaName: "StripeRelay",
       repositoryVersion: props.relayLambdaVersion,
-      destinationUrl: parameters.schedulerDestinationUrl,
+      environment: {
+        DESTINATION_URL: settings.schedulerDestinationUrl,
+      },
     });
 
     relayLambda.lambdaAlias.addPermission(

@@ -6,17 +6,18 @@ import * as batch from "aws-cdk-lib/aws-batch";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as sns_subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
-import * as logs from "aws-cdk-lib/aws-logs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { IRepository } from "aws-cdk-lib/aws-ecr";
 import Settings from "./settings";
-
+import { createLambdaFunction } from "./utils";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 interface SsgCloudWatchSchedulerProps extends cdk.StackProps {
   repo: IRepository;
   lowPriorityQueue: batch.JobQueue;
   highPriorityQueue: batch.JobQueue;
-  relayLambda: lambda.DockerImageFunction;
-  relayLambdaAlias: lambda.Alias;
+  relayLambdaRepository: ecr.Repository;
+  ebScheduleRepository: ecr.Repository;
+  policies?: iam.PolicyStatement[];
 }
 
 export class CloudWatchSchedulerStack extends cdk.Stack {
@@ -24,10 +25,9 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
   lambdaAlias: lambda.Alias;
   jobCommandTopic: sns.Topic;
   jobCommandQueue: sqs.IQueue;
-  deadLetterQueue: sqs.IQueue;
-  snsDeadLetterQueue: sqs.IQueue;
   scheduleDeadLetterQueue: sqs.IQueue;
-  scheduleLambdaDeadLetterQueue: sqs.IQueue;
+  scheduleLambdaFunction: lambda.DockerImageFunction;
+  scheduleLambdaAlias: lambda.Alias;
   devQueue: sqs.Queue;
   settings: Settings;
   constructor(
@@ -41,82 +41,47 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
       throw new Error("Missing required repository prop");
     }
 
+    if (
+      !process.env.EB_SCHEDULE_LAMBDA_VERSION ||
+      !process.env.RELAY_LAMBDA_VERSION
+    ) {
+      throw new Error(
+        "Missing required EB_SCHEDULE_LAMBDA_VERSION OR RELAY_LAMBDA_VERSION prop"
+      );
+    }
+
+    const relayLambdaVersion = process.env.RELAY_LAMBDA_VERSION;
+    const relayLambdaName = "SchedulerRelay";
+    if (!relayLambdaVersion) {
+      throw new Error("Missing required relayLambdaVersion prop");
+    }
     this.settings = new Settings(this);
 
-    this.lambdaFunction = props.relayLambda;
-    this.lambdaAlias = props.relayLambdaAlias;
+    const { lambdaFunction, deadLetterQueue, lambdaAlias } =
+      createLambdaFunction({
+        stack: this,
+        lambdaName: relayLambdaName,
+        repositoryVersion: relayLambdaVersion,
+        repository: props.relayLambdaRepository,
+        environment: {
+          DESTINATION_URL: this.settings.schedulerDestinationUrl,
+        },
+      });
 
-    // Create an IAM role for the Lambda function
-    const executionRole = new iam.Role(this, "ScheduleBatchExecutionRole", {
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
-      roleName: "scheduler-batch-execution-role",
-      description: "Scheduler Batch Execution Role",
+    const {
+      lambdaFunction: scheduleLambdaFunction,
+      lambdaAlias: scheduleLambdaAlias,
+    } = createLambdaFunction({
+      stack: this,
+      lambdaName: "ScheduleLambda",
+      repositoryVersion: process.env.EB_SCHEDULE_LAMBDA_VERSION,
+      repository: props.ebScheduleRepository,
     });
 
-    // Add the necessary policies to the Lambda execution role
-    executionRole.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName(
-        "service-role/AWSBatchServiceRole"
-      )
-    );
-
-    executionRole.addManagedPolicy(
-      iam.ManagedPolicy.fromAwsManagedPolicyName(
-        "service-role/AWSLambdaBasicExecutionRole"
-      )
-    );
-
-    executionRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: "BatchSubmitJob",
-        actions: ["batch:SubmitJob"],
-        resources: ["*"],
-      })
-    );
-
-    // Create a CloudWatch Logs group for the Lambda function
-    const logGroup = new logs.LogGroup(this, "ScheduleBatchGroup", {
-      logGroupName: "/aws/lambda/ScheduleBatch",
-      retention: logs.RetentionDays.ONE_WEEK, // Adjust as needed
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    this.scheduleLambdaDeadLetterQueue = new sqs.Queue(
-      this,
-      "ScheduleLambdaDeadLetterQueue",
-      {
-        queueName: "ScheduleLambdaDeadLetterQueue",
-        retentionPeriod: cdk.Duration.days(7),
-      }
-    );
-
-    new cdk.CfnOutput(this, "ScheduleLambdaDeadLetterQueueArn", {
-      value: this.scheduleLambdaDeadLetterQueue.queueArn,
-      exportName: "ScheduleLambdaDeadLetterQueueArn",
-    });
-
-    executionRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: "BatchLambdaLambdaSendMessages",
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:SendMessage"],
-        resources: [this.scheduleLambdaDeadLetterQueue.queueArn],
-      })
-    );
-
-    // Dead Letter Queue
-    this.deadLetterQueue = new sqs.Queue(this, "JobCommandDeadLetterQueue", {
-      queueName: "JobCommandDeadLetterQueue",
-      retentionPeriod: cdk.Duration.days(7),
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    // Dead Letter Queue
-    this.snsDeadLetterQueue = new sqs.Queue(this, "SNSCommandDeadLetterQueue", {
-      queueName: "SNSJobCommandDeadLetterQueue",
-      retentionPeriod: cdk.Duration.days(7),
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    this.lambdaFunction = lambdaFunction;
+    this.lambdaAlias = lambdaAlias;
+    this.scheduleLambdaFunction = scheduleLambdaFunction;
+    this.scheduleLambdaAlias = scheduleLambdaAlias;
 
     this.scheduleDeadLetterQueue = new sqs.Queue(
       this,
@@ -127,7 +92,6 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       }
     );
-
     new cdk.CfnOutput(this, "ScheduleDeadLetterQueueArn", {
       value: this.scheduleDeadLetterQueue.queueArn,
       exportName: "ScheduleDeadLetterQueueArn",
@@ -145,13 +109,6 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
       displayName: "Job Command SNS Topic",
     });
 
-    // Enable delivery status logging for SNS
-    this.jobCommandTopic.addSubscription(
-      new sns_subscriptions.SqsSubscription(this.deadLetterQueue, {
-        rawMessageDelivery: false,
-      })
-    );
-
     new cdk.CfnOutput(this, "JobCommandTopicArn", {
       value: this.jobCommandTopic.topicArn,
       exportName: "JobCommandTopicArn",
@@ -159,6 +116,13 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
   }
 
   createSQSQueue() {
+    // Dead Letter Queue
+    const jobCommandQueueDLQ = new sqs.Queue(this, "JobCommandQueueDLQ", {
+      queueName: "JobCommandQueueDLQ",
+      retentionPeriod: cdk.Duration.days(7),
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Job Command Queue
     this.jobCommandQueue = new sqs.Queue(this, "JobCommandQueue", {
       queueName: "JobCommandQueue",
@@ -166,7 +130,7 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       deadLetterQueue: {
         maxReceiveCount: 5,
-        queue: this.snsDeadLetterQueue,
+        queue: jobCommandQueueDLQ,
       },
     });
 
@@ -185,7 +149,7 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
       threshold: this.settings.queueAlarmThreshold, // Alarm if the age of the oldest message exceeds 5 minutes
       evaluationPeriods: this.settings.queueAlarmEvaluationPeriod,
       alarmDescription: "Alarm if the SQS queue message age exceeds 5 minutes.",
-      actionsEnabled: true,
+      actionsEnabled: this.settings.queueAlarmActionsEnabled,
     });
 
     // Developer Queue for handling scheduling commands
@@ -209,26 +173,53 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
     // Grant the Lambda function permissions to read from the Job Command Queue
     this.jobCommandQueue.grantConsumeMessages(this.lambdaFunction);
 
-    this.lambdaFunction.addEnvironment(
+    this.scheduleLambdaFunction.addEnvironment(
       "TOPIC_ARN",
       this.jobCommandTopic.topicArn
     );
-    // Grant the Lambda function permissions to read from the Job Command Queue
-    this.jobCommandTopic.grantPublish(this.lambdaFunction);
+    // Grant the Lambda function permission to publish to the Job Command Topic
+    this.jobCommandTopic.grantPublish(this.scheduleLambdaFunction);
 
-    const subscription = new sns_subscriptions.SqsSubscription(
-      this.jobCommandQueue
+    const jobCommandTopicDLQ = new sqs.Queue(this, "JobCommandTopicDLQ", {
+      queueName: "JobCommandTopicDLQ",
+      retentionPeriod: cdk.Duration.days(7),
+    });
+
+    jobCommandTopicDLQ.addToResourcePolicy(
+      new iam.PolicyStatement({
+        sid: "AllowSNSToWriteToDLQ",
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.ServicePrincipal("sns.amazonaws.com")],
+        actions: ["sqs:SendMessage", "sqs:GetQueueUrl"],
+        resources: [jobCommandTopicDLQ.queueArn],
+        conditions: {
+          ArnEquals: {
+            "aws:SourceArn": this.jobCommandTopic.topicArn,
+          },
+          StringEquals: {
+            "aws:SourceAccount": this.account,
+          },
+        },
+      })
     );
-    this.jobCommandTopic.addSubscription(subscription);
+
+    // Enable delivery status logging for SNS
+    this.jobCommandTopic.addSubscription(
+      new sns_subscriptions.SqsSubscription(this.jobCommandQueue, {
+        rawMessageDelivery: false,
+        deadLetterQueue: jobCommandTopicDLQ,
+        filterPolicy: {},
+      })
+    );
 
     new cdk.CfnOutput(this, "JobCommandQueueUrl", {
       value: this.jobCommandQueue.queueUrl,
       exportName: "JobCommandQueueUrl",
     });
 
-    new cdk.CfnOutput(this, "JobCommandDeadLetterQueueUrl", {
-      value: this.deadLetterQueue.queueUrl,
-      exportName: "JobCommandDeadLetterQueueUrl",
+    new cdk.CfnOutput(this, "JobCommandTopicDLQUrl", {
+      value: jobCommandTopicDLQ.queueUrl,
+      exportName: "JobCommandTopicDLQUrl",
     });
   }
 
@@ -241,22 +232,12 @@ export class CloudWatchSchedulerStack extends cdk.Stack {
 
     eventScheduleRuleRole.addToPolicy(
       new iam.PolicyStatement({
-        sid: "AllowEventBridgeToPublish",
+        sid: "AllowSchedulerToInvokeLambda",
         effect: iam.Effect.ALLOW,
-        actions: ["sns:Publish"],
-        resources: [this.jobCommandTopic.topicArn],
+        actions: ["lambda:InvokeFunction"],
+        resources: [this.scheduleLambdaAlias.functionArn],
       })
     );
-
-    eventScheduleRuleRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: "AllowSchedulerToSendMesaages",
-        effect: iam.Effect.ALLOW,
-        actions: ["sqs:SendMessage"],
-        resources: [this.scheduleDeadLetterQueue.queueArn],
-      })
-    );
-
     new cdk.CfnOutput(this, "EventRuleRoleArn", {
       value: eventScheduleRuleRole.roleArn,
       exportName: "eventScheduleRuleArn",

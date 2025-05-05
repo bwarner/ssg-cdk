@@ -12,7 +12,8 @@ import { ParametersStack } from "./ssg-parameters";
 import { SsgRelayLambdaStack } from "./ssg-relay-lambda";
 import { SsgStripeStack } from "./ssg-stripe";
 import { SsgEbRulesStack } from "./ssg-eb-rules";
-import { SsgEbRulesLambdaStack } from "./ssg-eb-rules-lambda";
+
+import Settings from "./settings";
 export class SsgStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -25,6 +26,7 @@ export class SsgStack extends cdk.Stack {
       process.env.OWNER || "byron.warner@farvisionllc.com"
     );
 
+    const settings = new Settings(this);
     const certificateArn = process.env.CERTIFICATE_ARN;
     const zoneName = process.env.ZONE_NAME;
     if (!certificateArn || !zoneName) {
@@ -104,7 +106,9 @@ export class SsgStack extends cdk.Stack {
         repository: ecr.relayRepository,
         lambdaName: "SchedulerRelay",
         repositoryVersion: relayLambdaVersion,
-        destinationUrl: parameters.schedulerDestinationUrl,
+        environment: {
+          DESTINATION_URL: settings.schedulerDestinationUrl,
+        },
       }
     );
 
@@ -115,29 +119,17 @@ export class SsgStack extends cdk.Stack {
         repo: ecr.batchRepository,
         lowPriorityQueue: batch.queues.lowPriorityQueue,
         highPriorityQueue: batch.queues.highPriorityQueue,
-        relayLambda: schedulerRelayLambda.lambdaFunction,
-        relayLambdaAlias: schedulerRelayLambda.lambdaAlias,
+        relayLambdaRepository: ecr.relayRepository,
+        ebScheduleRepository: ecr.ebScheduleRepository,
       }
     );
-
-    const ebRulesLambda = new SsgEbRulesLambdaStack(
-      this,
-      "SsgEbRulesLambdaStack",
-      {
-        repository: ecr.eventBridgeConsumerRepository,
-        lambdaName: "EventBridgeRulesHandler",
-        repositoryVersion: ebRulesLambdaVersion,
-      }
-    );
-    ebRulesLambda.addDependency(ecr);
 
     const ebRules = new SsgEbRulesStack(this, "SsgEbRulesStack", {
-      relayLambdaAlias: schedulerRelayLambda.lambdaAlias,
-      lambdaFunction: ebRulesLambda.lambdaFunction,
-      topic: ebRulesLambda.ebRuleTopic,
+      relayLambdaRepository: ecr.relayRepository,
+      ebRulesLambdaRepository: ecr.ebRulesRepository,
     });
 
-    ebRules.addDependency(ebRulesLambda);
+    ebRules.addDependency(ecr);
 
     new SsgGithubStack(this, "SsgGithubStack");
 

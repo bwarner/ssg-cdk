@@ -10,43 +10,33 @@ import Settings from "./settings";
 import * as sns_subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as ecr from "aws-cdk-lib/aws-ecr";
-import { SsgTopicQueueComboStack } from "./ssg-topic-queue-combo";
-import { createLambdaFunction, createMetrics } from "./utils";
+import { createLambdaFunction } from "./utils";
 interface SsgEbRulesStackProps extends StackProps {
-  relayLambdaAlias: Alias;
-  lambdaFunction: Function;
-  topic: sns.Topic;
+  relayLambdaRepository: ecr.Repository;
+  ebRulesLambdaRepository: ecr.Repository;
 }
 
 export class SsgEbRulesStack extends Stack {
   settings: Settings;
   ebRuleTopic: sns.Topic;
   ebRuleQueue: sqs.Queue;
-  // ebRulesLambdaAlias: Alias;
+  ebRulesLambdaAlias: Alias;
   constructor(scope: Construct, id: string, props: SsgEbRulesStackProps) {
     super(scope, id, props);
 
     this.settings = new Settings(this);
-    this.ebRuleTopic = props.topic;
-    // const { lambdaFunction, lambdaAlias, deadLetterQueue } =
-    //   createLambdaFunction({
-    //     stack: this,
-    //     lambdaName: "EventBridgeRulesHandler",
-    //     repositoryVersion: props.ebRulesLambdaVersion,
-    //     repository: props.eventBridgeConsumerRepository,
-    //   });
 
-    const lambdaFunction = props.lambdaFunction;
-    // const lambdaAlias = props.lambdaAlias;
+    // SNS Topic
+    this.ebRuleTopic = new sns.Topic(this, `EventBridgeRuleTopic`, {
+      topicName: `EventBridgeRuleTopic`,
+      displayName: `EventBridge Rule Topic`,
+    });
 
-    // createMetrics(
-    //   this,
-    //   lambdaFunction,
-    //   deadLetterQueue,
-    //   "EventBridgeRulesHandler"
-    // );
-
-    // this.ebRulesLambdaAlias = lambdaAlias;
+    const relayLambdaVersion = process.env.RELAY_LAMBDA_VERSION;
+    if (!relayLambdaVersion) {
+      throw new Error("Missing required relayLambdaVersion prop");
+    }
+    const relayLambdaName = "EBRelay";
 
     const queueName = "EbRulesQueue";
     const queueNameDLQ = `${queueName}DLQ`;
@@ -93,8 +83,18 @@ export class SsgEbRulesStack extends Stack {
       exportName: `${queueName}DLQUrl`,
     });
 
+    const { lambdaFunction, deadLetterQueue, lambdaAlias } =
+      createLambdaFunction({
+        stack: this,
+        lambdaName: relayLambdaName,
+        repositoryVersion: relayLambdaVersion,
+        repository: props.relayLambdaRepository,
+        environment: {
+          DESTINATION_URL: this.settings.schedulerDestinationUrl,
+        },
+      });
+
     // queues subscribes to topic
-    this.ebRuleTopic = props.topic;
     this.ebRuleTopic.addSubscription(
       new sns_subscriptions.SqsSubscription(queue)
     );
@@ -131,13 +131,13 @@ export class SsgEbRulesStack extends Stack {
     // );
 
     // Add the EventBridge Rules Queue as an event source for the Relay Lambda function
-    props.relayLambdaAlias.addEventSourceMapping("RelayLambdaEventSource", {
+    lambdaAlias.addEventSourceMapping("RelayLambdaEventSource", {
       eventSourceArn: queue.queueArn,
       batchSize: 1, // Number of messages to process at a time
     });
 
     // Grant the Lambda function permissions to read from the Job Command Queue
-    queue.grantConsumeMessages(props.relayLambdaAlias);
+    queue.grantConsumeMessages(lambdaAlias);
 
     const batchJobStateChangeRule = new Rule(
       this,

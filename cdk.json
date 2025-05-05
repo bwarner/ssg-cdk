@@ -22,7 +22,12 @@
       "visibilityTimeout": 60,
       "maxReceiveCount": 5,
       "deadLetterQueueMaxReceiveCount": 5,
-      "deadLetterQueueVisibilityTimeout": 60
+      "deadLetterQueueVisibilityTimeout": 60,
+      "schedulerDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/aws/event",
+      "ruleDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/aws/event",
+      "stripeDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/stripe/webhook",
+      "ssoRoleArn": "arn:aws:iam::058264463518:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_Developer_78756576da842184",
+      "queueAlarmActionsEnabled": false
     },
     "prod": {
       "env": "prod",
@@ -31,7 +36,12 @@
       "visibilityTimeout": 60,
       "maxReceiveCount": 5,
       "deadLetterQueueMaxReceiveCount": 5,
-      "deadLetterQueueVisibilityTimeout": 60
+      "deadLetterQueueVisibilityTimeout": 60,
+      "schedulerDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/aws/event",
+      "ruleDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/aws/event",
+      "stripeDestinationUrl": "https://hip-urgently-caiman.ngrok-free.app/api/stripe/webhook",
+      "ssoRoleArn": "arn:aws:iam::058264463518:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_Developer_78756576da842184",
+      "queueAlarmActionsEnabled": true
     },
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/core:checkSecretUsage": true,

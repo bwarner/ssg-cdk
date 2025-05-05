@@ -8,17 +8,24 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { DLQ_RETENTION_DAYS } from "./const";
 import Settings from "./settings";
+import { IManagedPolicy } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement } from "aws-cdk-lib/aws-iam";
 
 export function createLambdaFunction({
   stack,
   lambdaName,
   repositoryVersion,
   repository,
+  policies,
+  environment,
 }: {
   stack: Stack;
   lambdaName: string;
   repositoryVersion: string;
   repository: ecr.Repository;
+  policies?: PolicyStatement[];
+  managedPolicies?: IManagedPolicy[];
+  environment?: Record<string, string>;
 }) {
   const settings = new Settings(stack);
   const deadLetterQueue = new sqs.Queue(
@@ -36,7 +43,10 @@ export function createLambdaFunction({
     stack,
     `${lambdaName}LambdaExecutionRole`,
     {
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      assumedBy: new iam.CompositePrincipal(
+        new iam.ServicePrincipal("lambda.amazonaws.com"),
+        new iam.AccountPrincipal(stack.account)
+      ),
       roleName: `${lambdaName.toLowerCase()}-lambda-execution-role`,
       description: `${lambdaName} Execution Role`,
     }
@@ -60,6 +70,12 @@ export function createLambdaFunction({
     })
   );
 
+  if (policies) {
+    for (const policy of policies) {
+      executionRole.addToPolicy(policy);
+    }
+  }
+
   const logGroup = new logs.LogGroup(stack, `${lambdaName}LogGroup`, {
     logGroupName: `/aws/lambda/${lambdaName}`,
     retention: settings.logRetentionPeriod,
@@ -74,10 +90,20 @@ export function createLambdaFunction({
     memorySize: 1024,
     timeout: cdk.Duration.seconds(10),
     role: executionRole,
+    logGroup,
     description: `${lambdaName} Lambda Function`,
     deadLetterQueue: deadLetterQueue,
-    logRetention: settings.logRetentionPeriod, // Ensures logs are retained for a week
+    environment: environment,
   });
+
+  const lambdaAlias = new lambda.Alias(
+    stack,
+    `${lambdaName}${settings.env.toUpperCase()}`,
+    {
+      aliasName: `${lambdaName}${settings.env.toUpperCase()}`,
+      version: lambdaFunction.currentVersion,
+    }
+  );
 
   // Example: Lambda error alarm
   new cloudwatch.Alarm(stack, `${lambdaName}LambdaErrorAlarm`, {
@@ -88,11 +114,12 @@ export function createLambdaFunction({
     actionsEnabled: settings.lambdaAlarmActionsEnabled,
   });
   // Associate the log group with the Lambda function
-  logGroup.grantWrite(lambdaFunction);
-  lambdaOutput(stack, lambdaName, lambdaFunction, null, repository);
+  // logGroup.grantWrite(lambdaFunction);
+  lambdaOutput(stack, lambdaName, lambdaFunction, lambdaAlias, repository);
   return {
     deadLetterQueue,
     lambdaFunction,
+    lambdaAlias,
   };
 }
 
@@ -100,7 +127,7 @@ export function lambdaOutput(
   stack: Stack,
   name: string,
   lambdaFunction: lambda.DockerImageFunction,
-  lambdaAlias: lambda.Alias | null,
+  lambdaAlias: lambda.Alias,
   repository: ecr.Repository
 ) {
   new cdk.CfnOutput(stack, `${name}LambdaArn`, {

@@ -8,7 +8,9 @@ export class SsgEcrStack extends cdk.Stack {
   batchRepository: ecr.Repository;
   stripeHookRepository: ecr.Repository;
   relayRepository: ecr.Repository;
-  eventBridgeConsumerRepository: ecr.Repository;
+  ebRulesRepository: ecr.Repository;
+  ebScheduleRepository: ecr.Repository;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -37,19 +39,6 @@ export class SsgEcrStack extends cdk.Stack {
       exportName: "ssg-repo-frontend-arn",
     });
 
-    this.eventBridgeConsumerRepository = new ecr.Repository(
-      this,
-      "SsgEventBridgeConsumerRepository",
-      {
-        repositoryName: "ssg-eb-rules",
-      }
-    );
-
-    new cdk.CfnOutput(this, "SsgEventBridgeConsumerRepositoryArn", {
-      value: this.eventBridgeConsumerRepository.repositoryArn,
-      exportName: "ssg-repo-eb-rules-arn",
-    });
-
     this.stripeHookRepository = new ecr.Repository(
       this,
       "StripeHookRepository",
@@ -70,6 +59,27 @@ export class SsgEcrStack extends cdk.Stack {
     new cdk.CfnOutput(this, "SsgBatchEcrArn", {
       value: this.batchRepository.repositoryArn,
       exportName: "ssg-repo-batch-arn",
+    });
+
+    this.ebRulesRepository = new ecr.Repository(this, "SsgEbRulesRepository", {
+      repositoryName: "eb-rules-lambda",
+    });
+
+    new cdk.CfnOutput(this, "SsgEbRulesEcrArn", {
+      value: this.ebRulesRepository.repositoryArn,
+      exportName: "ssg-repo-eb-rules-arn",
+    });
+
+    this.ebScheduleRepository = new ecr.Repository(
+      this,
+      "SsgEbScheduleRepository",
+      {
+        repositoryName: "eb-schedule-lambda",
+      }
+    );
+    new cdk.CfnOutput(this, "SsgScheduleEcrArn", {
+      value: this.ebScheduleRepository.repositoryArn,
+      exportName: "ssg-repo-schedule-arn",
     });
 
     this.relayRepository = new ecr.Repository(this, "SsgRelayRepository", {

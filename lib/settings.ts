@@ -36,6 +36,18 @@ export default class Settings {
     return this.getContext("env", "preprod");
   }
 
+  get stripeDestinationUrl(): string {
+    return this.getContext("stripeDestinationUrl", "");
+  }
+
+  get schedulerDestinationUrl(): string {
+    return this.getContext("schedulerDestinationUrl", "");
+  }
+
+  get ruleDestinationUrl(): string {
+    return this.getContext("ruleDestinationUrl", "");
+  }
+
   get lambdaMemorySize(): number {
     return this.getContext("lambdaMemorySize", 1024);
   }
@@ -120,6 +132,10 @@ export default class Settings {
   }
 
   get queueAlarmActionsEnabled(): boolean {
-    return this.getContext("queueAlarmActionsEnabled", true); // Default: true
+    return this.getContext("queueAlarmActionsEnabled", false);
+  }
+
+  get ssoRoleArn(): string {
+    return this.getContext("ssoRoleArn", "");
   }
 }
