@@ -73,25 +73,30 @@ export class SsgStack extends cdk.Stack {
     });
 
     // Create ECS stack with VPC dependency
-    const ecs = new SsgEcsStack(this, "SsgEcsStack", {
-      vpc: vpc.vpc,
-      frontendRepository: ecr.frontendRepository,
-      zone: zone.zone,
-      certificateArn: zone.certificate.certificateArn,
-      desiredCount: 2,
-      frontendDomainName: process.env.FRONTEND_DOMAIN_NAME || "",
-      nodeEnv: process.env.NODE_ENV || "production",
-      memoryLimitMiB: 2048,
-      cpu: 1024,
-      secret: secrets.ssgSecret,
-      // auth0: {
-      //   auth0BaseUrl: process.env.AUTH0_BASE_URL || '',
-      //   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL || '',
-      //   auth0ClientId: process.env.AUTH0_CLIENT_ID || '',
-      //   auth0ClientSecret: process.env.AUTH0_CLIENT_SECRET || '',
-      //   auth0Audience: process.env.AUTH0_AUDIENCE || '',
-      // },
-    });
+    // const ecs = new SsgEcsStack(this, "SsgEcsStack", {
+    //   vpc: vpc.vpc,
+    //   frontendRepository: ecr.frontendRepository,
+    //   zone: zone.zone,
+    //   certificateArn: zone.certificate.certificateArn,
+    //   desiredCount: 2,
+    //   frontendDomainName: process.env.FRONTEND_DOMAIN_NAME || "",
+    //   nodeEnv: process.env.NODE_ENV || "production",
+    //   memoryLimitMiB: 2048,
+    //   cpu: 1024,
+    //   secret: secrets.ssgSecret,
+    //   // auth0: {
+    //   //   auth0BaseUrl: process.env.AUTH0_BASE_URL || '',
+    //   //   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL || '',
+    //   //   auth0ClientId: process.env.AUTH0_CLIENT_ID || '',
+    //   //   auth0ClientSecret: process.env.AUTH0_CLIENT_SECRET || '',
+    //   //   auth0Audience: process.env.AUTH0_AUDIENCE || '',
+    //   // },
+    // });
+    // this.addDependency(ecs);
+    // ecs.addDependency(vpc);
+    // ecs.addDependency(ecr);
+    // ecs.addDependency(zone);
+
     // Create Batch stack with VPC dependency
     const batch = new SsgBatchStack(this, "SsgBatch", {
       vpc: vpc.vpc,
@@ -137,12 +142,9 @@ export class SsgStack extends cdk.Stack {
     this.addDependency(ecr);
     this.addDependency(zone);
     this.addDependency(batch);
-    this.addDependency(ecs);
     this.addDependency(stripe);
     this.addDependency(cloudWatchScheduler);
-    ecs.addDependency(vpc);
-    ecs.addDependency(ecr);
-    ecs.addDependency(zone);
+
     batch.addDependency(vpc);
     batch.addDependency(ecr);
     parameters.addDependency(secrets);
