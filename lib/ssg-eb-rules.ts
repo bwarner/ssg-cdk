@@ -164,21 +164,17 @@ export class SsgEbRulesStack extends Stack {
     );
 
     // Add targets to the rules separately
-    batchJobStateChangeRule.addTarget(
-      new targets.LambdaFunction(lambdaFunction)
-    );
-    scheduledBatchEventRule.addTarget(
-      new targets.LambdaFunction(lambdaFunction)
-    );
+    batchJobStateChangeRule.addTarget(new targets.LambdaFunction(lambdaAlias));
+    scheduledBatchEventRule.addTarget(new targets.LambdaFunction(lambdaAlias));
 
-    // lambdaAlias.addPermission("BatchJobStateChangeRuleInvoke", {
-    //   principal: new iam.ServicePrincipal("events.amazonaws.com"),
-    //   sourceArn: batchJobStateChangeRule.ruleArn,
-    // });
+    lambdaAlias.addPermission("BatchJobStateChangeRuleInvoke", {
+      principal: new iam.ServicePrincipal("events.amazonaws.com"),
+      sourceArn: batchJobStateChangeRule.ruleArn,
+    });
 
-    // lambdaAlias.addPermission("ScheduledBatchEventRuleInvoke", {
-    //   principal: new iam.ServicePrincipal("events.amazonaws.com"),
-    //   sourceArn: scheduledBatchEventRule.ruleArn,
-    // });
+    lambdaAlias.addPermission("ScheduledBatchEventRuleInvoke", {
+      principal: new iam.ServicePrincipal("events.amazonaws.com"),
+      sourceArn: scheduledBatchEventRule.ruleArn,
+    });
   }
 }
