@@ -68,6 +68,6 @@ export class SsgEbRulesLambdaStack extends cdk.Stack {
     this.deadLetterQueue = deadLetterQueue;
     this.lambdaFunction = lambdaFunction;
     this.ebRuleTopic = ebRuleTopic;
-    createMetrics(this, this.lambdaFunction, this.deadLetterQueue, lambdaName);
+    createMetrics(this, this.lambdaFunction, lambdaName, this.deadLetterQueue);
   }
 }

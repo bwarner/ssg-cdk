@@ -1,9 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
-import * as sns_subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 
 interface StripeHookProps extends cdk.StackProps {
   topicName: string;

@@ -153,10 +153,19 @@ export function lambdaOutput(
 export function getMetricConfig(
   stack: Stack,
   lambdaFunction: lambda.IFunction,
-  deadLetterQueue: sqs.IQueue
+  deadLetterQueue?: sqs.IQueue
 ) {
   const settings = new Settings(stack);
-  return [
+  type AlarmProps = {
+    threshold: number;
+    evaluationPeriods: number;
+    alarmDescription: string;
+    actionsEnabled?: boolean;
+  };
+  const list: {
+    metric: cloudwatch.Metric;
+    alarmProps?: AlarmProps;
+  }[] = [
     {
       metric: lambdaFunction.metricErrors(),
       alarmProps: {
@@ -175,29 +184,32 @@ export function getMetricConfig(
       },
     },
     {
-      metric: lambdaFunction.metricThrottles,
+      metric: lambdaFunction.metricThrottles(),
     },
     {
-      metric: lambdaFunction.metricDuration,
+      metric: lambdaFunction.metricDuration(),
     },
-    {
+  ];
+
+  if (deadLetterQueue) {
+    list.push({
       metric: deadLetterQueue.metricApproximateNumberOfMessagesVisible(),
       alarmProps: {
         threshold: settings.queueAlarmThreshold,
         evaluationPeriods: settings.queueAlarmEvaluationPeriod,
         alarmDescription:
           "Alarm if messages start to accumulate in the dead-letter queue.",
-        actionsEnabled: settings.queueAlarmActionsEnabled,
       },
-    },
-  ];
+    });
+  }
+  return list;
 }
 
 export function createMetrics(
   stack: Stack,
   lambdaFunction: lambda.IFunction,
-  deadLetterQueue: sqs.IQueue,
-  lambdaName: string
+  lambdaName: string,
+  deadLetterQueue?: sqs.IQueue
 ) {
   const metricsConfig = getMetricConfig(stack, lambdaFunction, deadLetterQueue);
 

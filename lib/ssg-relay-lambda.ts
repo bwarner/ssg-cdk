@@ -46,11 +46,6 @@ export class SsgRelayLambdaStack extends cdk.Stack {
     this.deadLetterQueue = deadLetterQueue;
     this.lambdaFunction = lambdaFunction;
     this.lambdaAlias = lambdaAlias;
-    createMetrics(
-      this,
-      this.lambdaFunction,
-      this.deadLetterQueue,
-      props.lambdaName
-    );
+    createMetrics(this, lambdaFunction, props.lambdaName, deadLetterQueue);
   }
 }

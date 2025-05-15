@@ -3,7 +3,6 @@ import { Construct } from "constructs";
 import { SsgVpcStack } from "./ssg-vpc";
 import { SsgEcrStack } from "./ssg-ecr";
 import { SsgZoneStack } from "./ssg-zone";
-import { SsgEcsStack } from "./ssg-ecs";
 import { SsgBatchStack } from "./ssg-batch";
 import { SsgSecretsStack } from "./ssg-secrets";
 import { SsgGithubStack } from "./ssg-github";
@@ -14,6 +13,7 @@ import { SsgStripeStack } from "./ssg-stripe";
 import { SsgEbRulesStack } from "./ssg-eb-rules";
 
 import Settings from "./settings";
+import SsgAppApi from "./ssg-app-api";
 export class SsgStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -135,6 +135,12 @@ export class SsgStack extends cdk.Stack {
     });
 
     ebRules.addDependency(ecr);
+
+    const appApi = new SsgAppApi(this, "SsgAppApi", {
+      name: "SsgAppApi",
+      jobApiRepository: ecr.jobApiRepository,
+    });
+    appApi.addDependency(ecr);
 
     new SsgGithubStack(this, "SsgGithubStack");
 

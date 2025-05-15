@@ -10,11 +10,20 @@ export class SsgEcrStack extends cdk.Stack {
   relayRepository: ecr.Repository;
   ebRulesRepository: ecr.Repository;
   ebScheduleRepository: ecr.Repository;
-
+  jobApiRepository: ecr.Repository;
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Define your ECR repository
+    this.jobApiRepository = new ecr.Repository(this, "SsgJobRepository", {
+      repositoryName: "job-api-lambda",
+    });
+
+    // Export the repository ARN as a CloudFormation output
+    new cdk.CfnOutput(this, "SsgJobEcrArn", {
+      value: this.jobApiRepository.repositoryArn,
+      exportName: "ssg-repo-job-api-arn",
+    });
+
     this.nmapRepository = new ecr.Repository(this, "SsgRepository", {
       repositoryName: "nmap",
     });
