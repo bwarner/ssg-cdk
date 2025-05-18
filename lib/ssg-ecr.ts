@@ -11,8 +11,22 @@ export class SsgEcrStack extends cdk.Stack {
   ebRulesRepository: ecr.Repository;
   ebScheduleRepository: ecr.Repository;
   jobApiRepository: ecr.Repository;
+  authorizerRepository: ecr.Repository;
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    this.authorizerRepository = new ecr.Repository(
+      this,
+      "SsgAuthorizerRepository",
+      {
+        repositoryName: "auth0-authorizer",
+      }
+    );
+
+    new cdk.CfnOutput(this, "SsgAuthorizerEcrArn", {
+      value: this.authorizerRepository.repositoryArn,
+      exportName: "ssg-repo-authorizer-arn",
+    });
 
     this.jobApiRepository = new ecr.Repository(this, "SsgJobRepository", {
       repositoryName: "job-api-lambda",

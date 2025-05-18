@@ -4,11 +4,14 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { createLambdaFunction } from "./utils";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import * as apigwv2_authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import Settings from "./settings";
 
 interface SsgAppApiProps extends cdk.StackProps {
   name: string;
   jobApiRepository: ecr.Repository;
+  authorizerLambdaAlias: lambda.Alias;
 }
 
 export default class SsgAppApi extends cdk.Stack {
@@ -36,6 +39,15 @@ export default class SsgAppApi extends cdk.Stack {
     });
 
     const httpApi = this.createHttpApiGateway(name);
+
+    const httpAuthorizer = new apigwv2_authorizers.HttpLambdaAuthorizer(
+      `${name}LambdaAuthorizer`,
+      props.authorizerLambdaAlias,
+      {
+        responseTypes: [apigwv2_authorizers.HttpLambdaResponseType.SIMPLE],
+        identitySource: ["$request.header.Authorization"],
+      }
+    );
 
     const integration = new HttpLambdaIntegration(name, lambdaAlias);
 
@@ -70,6 +82,7 @@ export default class SsgAppApi extends cdk.Stack {
         path: path.path,
         methods: path.methods,
         integration: integration,
+        authorizer: httpAuthorizer,
       });
     });
 

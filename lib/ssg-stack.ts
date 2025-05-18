@@ -11,6 +11,7 @@ import { ParametersStack } from "./ssg-parameters";
 import { SsgRelayLambdaStack } from "./ssg-relay-lambda";
 import { SsgStripeStack } from "./ssg-stripe";
 import { SsgEbRulesStack } from "./ssg-eb-rules";
+import SsgApiAuthorizer from "./ssg-api-authorizer";
 
 import Settings from "./settings";
 import SsgAppApi from "./ssg-app-api";
@@ -72,31 +73,6 @@ export class SsgStack extends cdk.Stack {
       parameters,
     });
 
-    // Create ECS stack with VPC dependency
-    // const ecs = new SsgEcsStack(this, "SsgEcsStack", {
-    //   vpc: vpc.vpc,
-    //   frontendRepository: ecr.frontendRepository,
-    //   zone: zone.zone,
-    //   certificateArn: zone.certificate.certificateArn,
-    //   desiredCount: 2,
-    //   frontendDomainName: process.env.FRONTEND_DOMAIN_NAME || "",
-    //   nodeEnv: process.env.NODE_ENV || "production",
-    //   memoryLimitMiB: 2048,
-    //   cpu: 1024,
-    //   secret: secrets.ssgSecret,
-    //   // auth0: {
-    //   //   auth0BaseUrl: process.env.AUTH0_BASE_URL || '',
-    //   //   auth0IssuerBaseUrl: process.env.AUTH0_ISSUER_BASE_URL || '',
-    //   //   auth0ClientId: process.env.AUTH0_CLIENT_ID || '',
-    //   //   auth0ClientSecret: process.env.AUTH0_CLIENT_SECRET || '',
-    //   //   auth0Audience: process.env.AUTH0_AUDIENCE || '',
-    //   // },
-    // });
-    // this.addDependency(ecs);
-    // ecs.addDependency(vpc);
-    // ecs.addDependency(ecr);
-    // ecs.addDependency(zone);
-
     // Create Batch stack with VPC dependency
     const batch = new SsgBatchStack(this, "SsgBatch", {
       vpc: vpc.vpc,
@@ -136,11 +112,19 @@ export class SsgStack extends cdk.Stack {
 
     ebRules.addDependency(ecr);
 
+    const authorizerLambda = new SsgApiAuthorizer(this, "SsgAuth0Authorizer", {
+      name: "SsgAuth0Authorizer",
+      authorizerRepository: ecr.authorizerRepository,
+    });
+    authorizerLambda.addDependency(ecr);
+
     const appApi = new SsgAppApi(this, "SsgAppApi", {
       name: "SsgAppApi",
       jobApiRepository: ecr.jobApiRepository,
+      authorizerLambdaAlias: authorizerLambda.lambdaAlias,
     });
     appApi.addDependency(ecr);
+    appApi.addDependency(authorizerLambda);
 
     new SsgGithubStack(this, "SsgGithubStack");
 
