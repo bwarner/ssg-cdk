@@ -2,10 +2,10 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
-import { createLambdaFunction } from "./utils";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as apigwv2_authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import { createLambdaFunction } from "./utils";
 import Settings from "./settings";
 
 interface SsgAppApiProps extends cdk.StackProps {
@@ -19,27 +19,28 @@ export default class SsgAppApi extends cdk.Stack {
     super(scope, id, props);
 
     const settings = new Settings(this);
+    const { name } = props;
 
     if (!process.env.JOB_API_LAMBDA_VERSION) {
       throw new Error(
         "Missing required environment variable JOB_API_LAMBDA_VERSION"
       );
     }
+
     const jobApiRepositoryVersion = process.env.JOB_API_LAMBDA_VERSION;
 
-    // Export the repository ARN as a CloudFormation output
-    const { name } = props;
-
-    const lambdaName = `${name}`;
+    // Create the Lambda from ECR and get the alias
     const { lambdaAlias } = createLambdaFunction({
       stack: this,
-      lambdaName,
+      lambdaName: name,
       repositoryVersion: jobApiRepositoryVersion,
       repository: props.jobApiRepository,
     });
 
+    // Create HTTP API Gateway
     const httpApi = this.createHttpApiGateway(name);
 
+    // ✅ Correct Lambda authorizer for HTTP API using SIMPLE response
     const httpAuthorizer = new apigwv2_authorizers.HttpLambdaAuthorizer(
       `${name}LambdaAuthorizer`,
       props.authorizerLambdaAlias,
@@ -49,8 +50,10 @@ export default class SsgAppApi extends cdk.Stack {
       }
     );
 
+    // Lambda integration for your service
     const integration = new HttpLambdaIntegration(name, lambdaAlias);
 
+    // Route definitions
     const paths = [
       {
         path: "/api/job",
@@ -77,23 +80,26 @@ export default class SsgAppApi extends cdk.Stack {
         ],
       },
     ];
-    paths.forEach((path) => {
+
+    // Add routes to HTTP API
+    for (const route of paths) {
       httpApi.addRoutes({
-        path: path.path,
-        methods: path.methods,
+        path: route.path,
+        methods: route.methods,
         integration: integration,
         authorizer: httpAuthorizer,
       });
-    });
+    }
 
+    // Output the HTTP API endpoint
     new cdk.CfnOutput(this, `${name}ApiUrl`, {
       value: httpApi.apiEndpoint,
       exportName: `${name}ApiUrl`,
     });
   }
 
-  createHttpApiGateway(name: string) {
-    const httpApi = new apigatewayv2.HttpApi(this, `${name}HttpApi`, {
+  private createHttpApiGateway(name: string) {
+    return new apigatewayv2.HttpApi(this, `${name}HttpApi`, {
       apiName: name,
       corsPreflight: {
         allowHeaders: ["*"],
@@ -101,6 +107,5 @@ export default class SsgAppApi extends cdk.Stack {
         allowOrigins: ["*"],
       },
     });
-    return httpApi;
   }
 }
