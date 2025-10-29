@@ -138,4 +138,8 @@ export default class Settings {
   get ssoRoleArn(): string {
     return this.getContext("ssoRoleArn", "");
   }
+
+  get apiDomainName(): string | undefined {
+    return this.getContext("apiDomainName", undefined);
+  }
 }

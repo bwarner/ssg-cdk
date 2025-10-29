@@ -118,13 +118,22 @@ export class SsgStack extends cdk.Stack {
     });
     authorizerLambda.addDependency(ecr);
 
+    // Get API domain name from settings (context)
+    const apiDomainName = settings.apiDomainName;
+
     const appApi = new SsgAppApi(this, "SsgAppApi", {
       name: "SsgAppApi",
       jobApiRepository: ecr.jobApiRepository,
       authorizerLambdaAlias: authorizerLambda.lambdaAlias,
+      domainName: apiDomainName,
+      hostedZone: apiDomainName ? zone.zone : undefined,
+      certificate: apiDomainName ? zone.certificate : undefined,
     });
     appApi.addDependency(ecr);
     appApi.addDependency(authorizerLambda);
+    if (apiDomainName) {
+      appApi.addDependency(zone);
+    }
 
     new SsgGithubStack(this, "SsgGithubStack");
 
