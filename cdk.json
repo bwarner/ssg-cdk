@@ -15,8 +15,8 @@
     ]
   },
   "context": {
-    "preprod": {
-      "env": "preprod",
+    "staging": {
+      "env": "staging",
       "logRetentionPeriod": "ONE_WEEK",
       "removalPolicy": "RETAIN",
       "visibilityTimeout": 60,

@@ -118,7 +118,7 @@ export class SsgStack extends cdk.Stack {
     });
     authorizerLambda.addDependency(ecr);
 
-    // Get API domain name from settings (context)
+    // Get API domain name from settings (context) - will throw if not configured
     const apiDomainName = settings.apiDomainName;
 
     const appApi = new SsgAppApi(this, "SsgAppApi", {
@@ -126,14 +126,12 @@ export class SsgStack extends cdk.Stack {
       jobApiRepository: ecr.jobApiRepository,
       authorizerLambdaAlias: authorizerLambda.lambdaAlias,
       domainName: apiDomainName,
-      hostedZone: apiDomainName ? zone.zone : undefined,
-      certificate: apiDomainName ? zone.certificate : undefined,
+      hostedZone: zone.zone,
+      certificate: zone.certificate,
     });
     appApi.addDependency(ecr);
     appApi.addDependency(authorizerLambda);
-    if (apiDomainName) {
-      appApi.addDependency(zone);
-    }
+    appApi.addDependency(zone);
 
     new SsgGithubStack(this, "SsgGithubStack");
 

@@ -33,7 +33,7 @@ export default class Settings {
   }
 
   get env(): string {
-    return this.getContext("env", "preprod");
+    return this.getContext("env", "staging");
   }
 
   get stripeDestinationUrl(): string {
@@ -139,7 +139,14 @@ export default class Settings {
     return this.getContext("ssoRoleArn", "");
   }
 
-  get apiDomainName(): string | undefined {
-    return this.getContext("apiDomainName", undefined);
+  get apiDomainName(): string {
+    const domainName = this.getContext<string | undefined>("apiDomainName", undefined);
+    if (!domainName) {
+      throw new Error(
+        `Missing required apiDomainName in context for environment: ${this.environment}. ` +
+        `Please add apiDomainName to the ${this.environment} context in cdk.json`
+      );
+    }
+    return domainName;
   }
 }

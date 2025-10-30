@@ -14,14 +14,14 @@ interface SsgAppApiProps extends cdk.StackProps {
   name: string;
   jobApiRepository: ecr.Repository;
   authorizerLambdaAlias: lambda.Alias;
-  domainName?: string;
-  hostedZone?: route53.IHostedZone;
-  certificate?: acm.ICertificate;
+  domainName: string;
+  hostedZone: route53.IHostedZone;
+  certificate: acm.ICertificate;
 }
 
 export default class SsgAppApi extends cdk.Stack {
   public readonly apiUrl: string;
-  private customDomain?: apigatewayv2.DomainName;
+  private customDomain: apigatewayv2.DomainName;
 
   constructor(scope: Construct, id: string, props: SsgAppApiProps) {
     super(scope, id, props);
@@ -99,68 +99,53 @@ export default class SsgAppApi extends cdk.Stack {
       });
     }
 
-    // Set API URL based on custom domain or default endpoint
-    if (domainName && this.customDomain) {
-      this.apiUrl = `https://${domainName}`;
+    // Set API URL using the custom domain
+    this.apiUrl = `https://${domainName}`;
 
-      // Create Route53 A record for custom domain if hosted zone is provided
-      if (hostedZone) {
-        new route53.ARecord(this, `${name}AliasRecord`, {
-          zone: hostedZone,
-          recordName: domainName.split('.')[0], // Extract subdomain part (e.g., "api" or "staging-api")
-          target: route53.RecordTarget.fromAlias(
-            new route53Targets.ApiGatewayv2DomainProperties(
-              this.customDomain.regionalDomainName,
-              this.customDomain.regionalHostedZoneId
-            )
-          ),
-        });
-      }
-    } else {
-      this.apiUrl = httpApi.apiEndpoint;
-    }
+    // Create Route53 A record for custom domain
+    new route53.ARecord(this, `${name}AliasRecord`, {
+      zone: hostedZone,
+      recordName: domainName.split('.')[0], // Extract subdomain part (e.g., "api" or "staging-api")
+      target: route53.RecordTarget.fromAlias(
+        new route53Targets.ApiGatewayv2DomainProperties(
+          this.customDomain.regionalDomainName,
+          this.customDomain.regionalHostedZoneId
+        )
+      ),
+    });
 
     // Output the API URL
     new cdk.CfnOutput(this, `${name}ApiUrl`, {
       value: this.apiUrl,
       exportName: `${name}ApiUrl`,
-      description: `API Gateway endpoint URL (${domainName || 'default'})`,
+      description: `API Gateway endpoint URL (${domainName})`,
     });
   }
 
   private createHttpApiGateway(
     name: string,
-    domainName?: string,
-    certificate?: acm.ICertificate
-  ): { httpApi: apigatewayv2.HttpApi; customDomain?: apigatewayv2.DomainName } {
-    // Build API configuration with optional custom domain
-    const apiConfig: apigatewayv2.HttpApiProps = {
+    domainName: string,
+    certificate: acm.ICertificate
+  ): { httpApi: apigatewayv2.HttpApi; customDomain: apigatewayv2.DomainName } {
+    // Create custom domain for API Gateway
+    const customDomain = new apigatewayv2.DomainName(this, `${name}DomainName`, {
+      domainName: domainName,
+      certificate: certificate,
+    });
+
+    // Create HTTP API with custom domain mapping
+    const httpApi = new apigatewayv2.HttpApi(this, `${name}HttpApi`, {
       apiName: name,
       corsPreflight: {
         allowHeaders: ["*"],
         allowMethods: [apigatewayv2.CorsHttpMethod.ANY],
         allowOrigins: ["*"],
       },
-    };
+      defaultDomainMapping: {
+        domainName: customDomain,
+      },
+    });
 
-    // Add custom domain if provided
-    if (domainName && certificate) {
-      const customDomain = new apigatewayv2.DomainName(this, `${name}DomainName`, {
-        domainName: domainName,
-        certificate: certificate,
-      });
-
-      const httpApi = new apigatewayv2.HttpApi(this, `${name}HttpApi`, {
-        ...apiConfig,
-        defaultDomainMapping: {
-          domainName: customDomain,
-        },
-      });
-
-      return { httpApi, customDomain };
-    }
-
-    const httpApi = new apigatewayv2.HttpApi(this, `${name}HttpApi`, apiConfig);
-    return { httpApi };
+    return { httpApi, customDomain };
   }
 }
